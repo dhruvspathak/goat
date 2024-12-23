@@ -1,0 +1,59 @@
+name: NodeGoat CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16' # Specify the Node.js version
+
+  install_dependencies:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Dependencies
+        run: npm install
+
+  tests:
+    needs: install_dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Tests
+        run: npm start
+
+  build:
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build the Project
+        run: npm run dev
+
+  dast_scan:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Run Checkmarx DAST Scan
+        uses: Checkmarx/dast-github-action@v2.3.0
+        with:
+          command: web # Specify the type of scan (web or api)
+          config: 'zapconfig.yaml' # Path to the ZAP configuration file
+          base_url: ${{ secrets.CX_BASE_URL }} # Set the base URL for Checkmarx One
+          environment_id: ${{ secrets.CX_ENVIRONMENT_ID }} # Environment ID from Checkmarx
+          verbose: true # Enable detailed logging
+          log_level: info # Log level (default is info)
