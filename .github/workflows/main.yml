@@ -1,59 +1,62 @@
-name: NodeGoat CI/CD Pipeline
-
+name: CxONE Dast Scan Gin and Juice
 on:
-  push:
-    branches:
-      - main
   pull_request:
-    branches:
-      - main
+   branches:
+   - main
+  push: 
+   branches:
+   - main
+    
+  workflow_dispatch: #adds a 'run now' button
+  
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  setup:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '16' # Specify the Node.js version
-
-  install_dependencies:
-    needs: setup
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install Dependencies
-        run: npm install
-
-  tests:
-    needs: install_dependencies
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run Tests
-        run: npm start
-
   build:
-    needs: tests
+    permissions:
+      contents: read # for actions/checkout to fetch code
+      security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
+      actions: read # only required for a private repository by github/codeql-action/upload-sarif
+     # The type of runner that the job will run on 
     runs-on: ubuntu-latest
     steps:
-      - name: Build the Project
-        run: npm run dev
-
-  dast_scan:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v3
-
-      - name: Run Checkmarx DAST Scan
+      - name: Create Output folder
+        run: mkdir ${{ github.workspace }}/output_fold
+      - name: Change dir owner
+        run: sudo chown -R 1000:1000 ${{ github.workspace }}
+      - name: Checkmarx DAST Github Action
         uses: Checkmarx/dast-github-action@v2.3.0
+        env:
+          # prod
+          CX_APIKEY: ${{ secrets.CX_APIKEY }}
+          # canary: 
+          # CX_APIKEY: ${{ secrets.CANARY_API_KEY }}
         with:
-          command: web # Specify the type of scan (web or api)
-          config: 'zapconfig.yaml' # Path to the ZAP configuration file
-          base_url: ${{ secrets.CX_BASE_URL }} # Set the base URL for Checkmarx One
-          environment_id: ${{ secrets.CX_ENVIRONMENT_ID }} # Environment ID from Checkmarx
-          verbose: true # Enable detailed logging
-          log_level: info # Log level (default is info)
+            command: web
+            config: './gin_juice_noauth.yaml'
+            log_level: info
+            #prod
+            base_url: "https://ind.ast.checkmarx.net"
+            environment_id: "bd462e37-c712-440a-9e0c-7984b09d5252"
+            # canary
+            #base_url: "https://ind.ast.checkmarx.net"
+            #environment_id: "bd462e37-c712-440a-9e0c-7984b09d5252"
+            fail_on: ""
+            verbose: true
+            output: ${{ github.workspace }}/output_fold #./output
+      - name: Reclaim output directory
+        if: always()
+        run: sudo chown -R 1001:1001 ${{ github.workspace }}/output_fold
+      - uses: actions/upload-artifact@v3
+        if: always()
+        name: Upload Logs
+        with:
+          name: report
+          path: ${{ github.workspace }}/output_fold
